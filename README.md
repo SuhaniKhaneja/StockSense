@@ -1,253 +1,205 @@
-# StockSense: Demand Forecasting and Reorder Recommendations
+# StockSense: Demand Forecasting and Inventory Evaluation on Lumpy Retail Demand
 
-StockSense is a demand forecasting and inventory planning project that forecasts daily product demand 14 days ahead, estimates prediction intervals, and generates reorder recommendations using safety stock and reorder points.
+StockSense forecasts product-level demand, estimates prediction intervals, turns forecasts into reorder recommendations, and, most importantly, **evaluates whether the forecasts actually help**. It is built on real transaction data (UCI Online Retail II) and uses leakage-safe rolling-origin backtesting with bootstrap confidence intervals.
 
-It uses Python, pandas, scikit-learn, Streamlit, FastAPI, and SQLite. The project supports both synthetic sales data and real-world retail transaction data.
+Stack: Python, pandas, scikit-learn, Streamlit, FastAPI, SQLite, pytest.
 
-## Key Features
+## Key findings
 
-- **Demand forecasting:** Predicts product-level daily demand for the next 14 days.
-- **Model comparison:** Compares Gradient Boosting against seasonal forecasting baselines.
-- **Rolling-origin backtesting:** Evaluates models over four 14-day forecast folds.
-- **Uncertainty estimation:** Generates prediction intervals and measures interval coverage.
-- **Inventory recommendations:** Calculates reorder points, safety stock, and suggested order quantities.
-- **Interactive dashboard:** Explores forecasts, model performance, and inventory recommendations using Streamlit.
-- **REST API:** Exposes forecasting functionality through FastAPI.
-- **Statistical evaluation:** Uses bootstrap confidence intervals to assess relative WAPE reductions against baseline models.
+On 136 products from UCI Online Retail II (739 days):
 
-## Results on Real Data — UCI Online Retail II
+1. **Demand is lumpy.** 121 of 136 products (85% of volume) are classified as lumpy and the rest as erratic. None are smooth or intermittent. Many customers are wholesalers, so a few large orders dominate.
+2. **At daily grain, gradient boosting beats naive baselines, but absolute error is high.** WAPE 0.889 vs 1.144 for seasonal naive (22.3% lower, 95% CI 18.2% to 26.5%). An error of 89% of demand means daily point forecasts are not usable on their own for this data.
+3. **At weekly planning grain, simple methods win.** A 4-week average and TSB (an intermittent-demand method) are statistically tied (WAPE 0.539 and 0.522). Both clearly beat weekly naive (0.643). A gradient-boosting model trained on weekly totals is significantly worse than the 4-week average (0.639, 18.6% worse, 95% CI 10.5% to 27.7% worse).
+4. **Forecast quality matters for inventory, up to a point.** In a stock simulation, a naive forecast needs roughly 10 to 13 percentage points of demand more excess stock than the 4-week average to reach the same fill rate. TSB and the 4-week average sit on essentially the same cost/service trade-off.
 
-The forecasting pipeline was evaluated on a daily sales panel derived from the UCI Online Retail II dataset.
+The honest conclusion: on this dataset a complex model does not earn its place at the weekly planning grain. The evaluation framework is what showed that.
 
-**Dataset used:** 136 products across 739 days.
+## Dataset
 
-The evaluation compares Gradient Boosting against two seasonal baselines using rolling-origin backtesting.
+[UCI Online Retail II](https://archive.ics.uci.edu/dataset/502/online+retail+ii), real transactions from a UK-based online retailer between 01/12/2009 and 09/12/2011. Licensed CC BY 4.0; credit goes to the UCI Machine Learning Repository. Many of the retailer's customers are wholesalers, which is a main reason demand is lumpy.
 
-| Model | WAPE | MAE | Bias | 80% Interval Coverage |
-|---|---:|---:|---:|---:|
-| Gradient Boosting | 0.8887 | 39.1489 | 0.1980 | 0.9242 |
-| Seasonal Average (4 weeks) | 0.9913 | 43.5893 | -0.0581 | N/A |
-| Seasonal Naive | 1.1437 | 50.3990 | -0.0239 | N/A |
+Preprocessing (`stocksense/realdata.py`):
 
-### Baseline Comparison
-
-- **22.3% lower WAPE** than Seasonal Naive, with a 95% bootstrap confidence interval of 18.2%–26.5%.
-- **10.2% lower WAPE** than Seasonal Average, with a 95% bootstrap confidence interval of 5.2%–14.9%.
-
-Both comparisons were calculated across 136 products.
-
-Gradient Boosting outperformed the selected seasonal baselines in this evaluation. However, its real-data WAPE of 0.8887 (88.87%) remains high, so these results demonstrate relative improvement over the baselines rather than high absolute forecasting accuracy.
-
-The nominal 80% prediction interval had an observed coverage of 92.42% in this backtest. Further calibration may be needed.
-
-## Dataset and Preprocessing
-
-The project uses the [UCI Online Retail II dataset](https://archive.ics.uci.edu/dataset/502/online+retail+ii), which contains historical online retail transactions.
-
-The preprocessing pipeline in `stocksense/realdata.py`:
-
-- Reads transaction data from CSV or Excel files.
 - Removes cancelled transactions and non-product codes.
-- Aggregates transaction quantities into daily product-level sales.
-- Selects products based on sales volume and minimum active days.
-- Creates a daily panel, representing missing product-days as zero sales.
-- Produces a standardized dataset for forecasting.
+- Aggregates transactions into daily product-level sales.
+- Selects products by sales volume and minimum active days (136 products, 739 days).
+- Builds a complete daily panel, with missing product-days set to zero sales. This is a modelling assumption and affects results.
+- Promotion data is not available, so the `promo` feature is zero.
 
-Promotional information is unavailable in this dataset, so the `promo` feature is set to zero. Treating missing product-days as zero demand is a modelling assumption and may affect evaluation results.
+## Results
 
-## Tech Stack
+All results use rolling-origin backtesting: 4 folds, each forecasting 14 days from an origin, each trained only on data known at that origin. Confidence intervals are paired bootstrap over products.
 
-- **Language:** Python
-- **Data processing:** pandas, NumPy
-- **Machine learning:** scikit-learn
-- **Data storage and aggregation:** SQLite
-- **Dashboard:** Streamlit
-- **API:** FastAPI
-- **Testing:** pytest
-- **Evaluation:** WAPE, MAE, bias, interval coverage, and bootstrap confidence intervals
+### 1. Daily forecasting
 
-## How It Works
+| Model                      | WAPE   | MAE     | Bias    | 80% interval coverage |
+|----------------------------|-------:|--------:|--------:|----------------------:|
+| Gradient boosting          | 0.8887 | 39.1489 |  0.1980 | 0.9242                |
+| Seasonal average (4 weeks) | 0.9913 | 43.5893 | -0.0581 | n/a                   |
+| Seasonal naive             | 1.1437 | 50.3990 | -0.0239 | n/a                   |
 
-### 1. Feature Engineering
+- 22.3% lower WAPE than seasonal naive (95% CI 18.2% to 26.5%).
+- 10.2% lower WAPE than the 4-week seasonal average (95% CI 5.2% to 14.9%).
+- The nominal 80% interval covers 92.4% of outcomes, so the intervals are too wide (not yet calibrated).
 
-Implemented in `stocksense/features.py`.
+### 2. Demand segmentation
 
-The feature pipeline includes:
-- Same-weekday demand lags: 14, 21, 28, and 35 days.
-- Rolling demand averages over 7 and 28 days.
-- Calendar features.
-- Promotional flags.
-- Price-ratio features.
+Products are classified with the Syntetos-Boylan scheme (ADI cutoff 1.32, CV^2 cutoff 0.49), using only history from before the earliest backtest fold. Daily WAPE, pooled over folds:
 
-Historical features are designed to avoid using future demand information.
+| Segment | Products | Share of volume | Gradient boosting | Seasonal avg | Seasonal naive |
+|---------|---------:|----------------:|------------------:|-------------:|---------------:|
+| All     | 136      | 100%            | 0.883             | 0.983        | 1.136          |
+| Lumpy   | 121      | 84.7%           | 0.886             | 1.005        | 1.152          |
+| Erratic | 15       | 15.3%           | 0.866             | 0.860        | 1.052          |
 
-### 2. Forecasting Models
+There is no easy segment. Gradient boosting beats the seasonal average on lumpy products but not on erratic ones (0.866 vs 0.860).
 
-Implemented in `stocksense/models.py`.
+### 3. Weekly planning grain
 
-The project compares:
-- Seasonal Naive.
-- Seasonal Average over four weeks.
-- Gradient Boosting using scikit-learn's `HistGradientBoostingRegressor` with Poisson loss.
+Weekly WAPE on the same test weeks. "Daily GBM summed" adds the daily model's forecasts over each week. The other rows are weekly-native models.
 
-Additional quantile models produce prediction intervals.
+| Model                       | All   | Lumpy | Erratic |
+|-----------------------------|------:|------:|--------:|
+| TSB                         | 0.522 | 0.541 | 0.417   |
+| Weekly average (4 weeks)    | 0.539 | 0.553 | 0.465   |
+| Daily GBM, summed to weeks  | 0.561 | 0.557 | 0.583   |
+| Weekly GBM (weekly totals)  | 0.639 | 0.638 | 0.645   |
+| Weekly naive                | 0.643 | 0.656 | 0.569   |
 
-### 3. Model Evaluation
+Paired bootstrap over 136 products (WAPE reduction; positive means the first model is better):
 
-Implemented in `stocksense/backtest.py`.
+- TSB vs 4-week average: +3.2% (95% CI -0.9% to +7.2%). **A tie.**
+- TSB vs weekly naive: +18.8% (95% CI +12.9% to +24.0%).
+- Weekly GBM vs 4-week average: -18.6% (95% CI -27.7% to -10.5%).
+- Weekly GBM vs TSB: -22.5% (95% CI -32.9% to -13.2%).
+- Weekly GBM vs weekly naive: +0.5% (95% CI -7.6% to +8.1%). A tie.
 
-The pipeline uses rolling-origin backtesting with four folds and a 14-day forecast horizon. Each fold is trained using the data available at its forecast origin.
+The weekly gradient-boosting model was not tuned on the backtest folds, to avoid leaking the evaluation into the model choice. The daily GBM summed to weeks was not significance-tested against the 4-week average.
 
-Evaluation metrics include:
-- Weighted Absolute Percentage Error (WAPE).
-- Mean Absolute Error (MAE).
-- Forecast bias.
-- Prediction-interval coverage.
+### 4. Inventory backtest
 
-Bootstrap comparisons estimate relative WAPE reductions and their 95% confidence intervals.
+Policy: weekly review, order-up-to level, lost sales, one-week lead time. For each product and week, stock is `S = max(0, forecast + q)`, where `q` is the target quantile of that method's own recent forecast errors for that product (last 26 weeks before the fold origin). Every method's forecast uses only history through two weeks earlier. Weekly GBM is excluded because its in-sample errors would understate safety stock and flatter the comparison.
 
-### 4. Inventory Recommendations
+| Method           | Target | Fill rate | Cycle service | Excess stock / demand |
+|------------------|-------:|----------:|--------------:|----------------------:|
+| TSB              | 80%    | 0.801     | 0.737         | 0.451                 |
+| TSB              | 90%    | 0.881     | 0.836         | 0.753                 |
+| TSB              | 95%    | 0.926     | 0.887         | 1.091                 |
+| Weekly avg (4 wk)| 80%    | 0.818     | 0.740         | 0.492                 |
+| Weekly avg (4 wk)| 90%    | 0.892     | 0.844         | 0.803                 |
+| Weekly avg (4 wk)| 95%    | 0.936     | 0.899         | 1.146                 |
+| Weekly naive     | 80%    | 0.829     | 0.738         | 0.635                 |
+| Weekly naive     | 90%    | 0.897     | 0.860         | 0.935                 |
+| Weekly naive     | 95%    | 0.933     | 0.909         | 1.258                 |
 
-Implemented in `stocksense/inventory.py`.
+How to read it:
 
-The inventory logic uses forecast demand, lead time, and safety stock to estimate reorder points and suggested order quantities.
+- TSB shows lower fill rate and lower excess than the 4-week average at every target. That is a different operating point on the same trade-off, not a win. Interpolating between target levels (approximate, no confidence interval), TSB and the 4-week average need about the same excess stock for the same fill rate.
+- Naive needs roughly 10 to 13 percentage points of demand more excess stock than the 4-week average for the same fill rate (approximate, by interpolation).
+- No method reaches its target service level. The "95%" policies deliver 92.6% to 93.6% fill, because 26 weeks of errors per product is too little to estimate a high quantile on lumpy demand.
 
-Inventory quantities and stock levels shown in the dashboard are simulated rather than live inventory data.
+## How it works
 
-## Run Locally
+- `stocksense/features.py`: leakage-safe features (same-weekday lags of 14, 21, 28, 35 days, rolling means, calendar, price ratio). Every history-based feature is at least 14 days old.
+- `stocksense/models.py`: seasonal naive, 4-week seasonal average, and `HistGradientBoostingRegressor` with Poisson loss plus quantile models for the 80% interval.
+- `stocksense/backtest.py`: rolling-origin backtest (4 folds, 14-day horizon). Returns per-product predictions with fold and date.
+- `stocksense/segments.py`: ADI/CV^2 demand classification and WAPE by segment.
+- `stocksense/weekly.py`: daily vs weekly error from the same backtest.
+- `stocksense/weekly_model.py`: weekly-native models (naive, 4-week average, TSB, gradient boosting) with bootstrap CIs.
+- `stocksense/inventory_backtest.py`: the stock simulation above.
+- `stocksense/inventory.py`: reorder points, safety stock and order quantities for the dashboard. It sizes safety stock from the model's prediction interval with a normal approximation, which the inventory backtest suggests is not well suited to lumpy demand.
+- `app.py` (Streamlit dashboard) and `api.py` (FastAPI). Stock levels shown in the dashboard are simulated.
 
-### Requirements
+## Run locally
 
-- Python 3.12
-- Git
+Requires Python 3.12 and Git.
 
-### Installation
-
-```powershell
+```
 git clone https://github.com/SuhaniKhaneja/StockSense.git
 cd StockSense
-
 python -m venv .venv
 .venv\Scripts\Activate.ps1
-
 pip install -r requirements.txt
-```
-
-### Run the Synthetic-Data Pipeline
-
-```powershell
-python -m stocksense.pipeline
-```
-
-This generates synthetic sales data, runs backtesting, and writes outputs to the `artifacts/` directory.
-
-### Run the Dashboard
-
-```powershell
-streamlit run app.py
-```
-
-### Run the REST API
-
-```powershell
-uvicorn api:app --reload
-```
-
-Open the interactive API documentation at:
-
-`http://127.0.0.1:8000/docs`
-
-### Run the Tests
-
-```powershell
 python -m pytest -q
 ```
 
-## Run on Real Data
+Synthetic-data pipeline:
 
-Download the UCI Online Retail II dataset and place the Excel file in the project's `data/` directory.
+```
+python -m stocksense.pipeline
+```
 
-Convert the Excel data into a daily sales panel:
+## Reproduce the real-data results
 
-```powershell
+The dataset is not stored in the repo. Download it from the [UCI page](https://archive.ics.uci.edu/dataset/502/online+retail+ii), put the Excel file in `data/`, then:
+
+```
 python -m stocksense.realdata ".\data\online_retail_II.xlsx"
-```
-
-Run the forecasting and backtesting pipeline using the generated data:
-
-```powershell
 python -m stocksense.pipeline ".\data\sales.csv"
+python -m stocksense.segments ".\data\sales.csv"
+python -m stocksense.weekly ".\data\sales.csv"
+python -m stocksense.weekly_model ".\data\sales.csv"
+python -m stocksense.inventory_backtest ".\data\sales.csv"
 ```
 
-The pipeline writes forecasts and evaluation outputs to `artifacts/`.
+Outputs are written to `artifacts/`. Run the dashboard with `streamlit run app.py` and the API with `uvicorn api:app --reload`.
 
-Run the dashboard:
+## Synthetic benchmark
 
-```powershell
-streamlit run app.py
+Seed 42, 30 products, three years. Reported separately because generated data says little about real-world accuracy.
+
+| Model                      | WAPE  | MAE   | 80% interval coverage |
+|----------------------------|------:|------:|----------------------:|
+| Gradient boosting          | 0.282 | 11.90 | 0.78                  |
+| Seasonal average (4 weeks) | 0.328 | 13.83 | n/a                   |
+| Seasonal naive             | 0.401 | 16.93 | n/a                   |
+
+## Project structure
+
 ```
-
-## Synthetic-Data Benchmark
-
-The original synthetic benchmark uses seed 42 and 30 products across three years. These results are reported separately from the real-data evaluation.
-
-| Model | WAPE | MAE | 80% Interval Coverage |
-|---|---:|---:|---:|
-| Gradient Boosting | 0.282 | 11.90 | 0.78 |
-| Seasonal Average (4 weeks) | 0.328 | 13.83 | N/A |
-| Seasonal Naive | 0.401 | 16.93 | N/A |
-
-Synthetic results illustrate model behaviour on generated data; they should not be treated as expected real-world accuracy.
-
-## Project Structure
-
-```text
 StockSense/
-├── artifacts/
-│   ├── backtest_folds.csv
-│   ├── backtest_summary.csv
-│   ├── bootstrap.json
-│   ├── forecast.csv
-│   └── meta.json
-├── data/
-│   └── sales.csv
-├── stocksense/
-│   ├── backtest.py
-│   ├── data.py
-│   ├── features.py
-│   ├── inventory.py
-│   ├── metrics.py
-│   ├── models.py
-│   ├── pipeline.py
-│   └── realdata.py
-├── tests/
-├── api.py
-├── app.py
-├── requirements.txt
-└── README.md
+|-- artifacts/        results (backtest, segments, weekly, inventory CSVs)
+|-- data/             generated locally, not tracked in git
+|-- stocksense/
+|   |-- backtest.py
+|   |-- data.py
+|   |-- features.py
+|   |-- inventory.py
+|   |-- inventory_backtest.py
+|   |-- metrics.py
+|   |-- models.py
+|   |-- pipeline.py
+|   |-- realdata.py
+|   |-- segments.py
+|   |-- weekly.py
+|   `-- weekly_model.py
+|-- tests/
+|-- api.py
+|-- app.py
+`-- requirements.txt
 ```
 
-## Limitations and Future Improvements
+## Limitations
 
-- Real-data WAPE remains high, so further feature engineering, model tuning, and evaluation are needed.
-- The dataset does not contain promotional information; promotions are assumed to be zero.
-- Missing product-days are treated as zero demand, which may not always represent true demand.
-- Prediction intervals may need calibration because observed coverage exceeded the nominal 80% level.
-- Inventory levels in the dashboard are simulated.
-- Future prices and promotions are not modelled dynamically.
-- The current implementation does not explicitly model hierarchical product relationships, holidays, or inventory cost optimization.
+- One dataset, one retailer, 136 products. Findings may not transfer to smoother demand.
+- Missing product-days are treated as zero demand, and no promotion or holiday data is used.
+- WAPE is dominated by large orders. It is a reasonable metric here but not the only one.
+- Prediction intervals are over-wide (92.4% observed coverage for a nominal 80%) and have not been calibrated.
+- Inventory simulation assumes a one-week lead time, lost sales and no ordering costs. The TSB parameters are fixed, not tuned.
+- Safety stock from 26 weeks of errors undershoots high service targets.
+- The dashboard's reorder logic (`inventory.py`) is not yet switched to the empirical safety-stock method used in the backtest.
+- The equal-fill-rate comparison between methods is read off by interpolation, without confidence intervals.
 
-## Future Scope
+## Future work
 
-- Improve forecasting accuracy through feature engineering and systematic hyperparameter tuning.
-- Evaluate performance by product, demand pattern, and forecast horizon.
-- Calibrate prediction intervals.
-- Add holiday and promotional features where data is available.
-- Incorporate actual inventory, supplier lead times, and stockout information.
-- Optimize reorder quantities based on service-level and holding-cost objectives.
+- Compute the equal-fill-rate stock comparison properly, with bootstrap CIs.
+- Calibrate prediction intervals (for example with conformal prediction).
+- Use empirical-error safety stock in the dashboard recommendations.
+- Test on a second dataset with smoother demand to see where gradient boosting starts to pay off.
 
----
+## Credits
 
-**Author:** [Suhani Khaneja](https://github.com/SuhaniKhaneja)
+Data: [UCI Machine Learning Repository, Online Retail II](https://archive.ics.uci.edu/dataset/502/online+retail+ii), CC BY 4.0.
 
-**Repository:** [github.com/SuhaniKhaneja/StockSense](https://github.com/SuhaniKhaneja/StockSense)
+Author: [Suhani Khaneja](https://github.com/SuhaniKhaneja)
