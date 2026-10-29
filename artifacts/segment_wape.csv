@@ -1,0 +1,4 @@
+segment,volume_share,n_skus,Gradient boosting,Seasonal average (4 wk),Seasonal naive
+ALL,1.0,136.0,0.8828,0.9829,1.1365
+lumpy,0.8468,121.0,0.8859,1.0051,1.1517
+erratic,0.1532,15.0,0.8655,0.8604,1.0521

@@ -22,7 +22,9 @@ def backtest(df, n_folds=4, horizon=HORIZON):
                 cov = coverage(test["units"], lo, hi)
             else:
                 p, cov = model.predict(test), None
-            preds.append(pd.DataFrame({"model": model.name, "sku": test["sku"].values,
+            preds.append(pd.DataFrame({"model": model.name, "fold": k,
+                                       "date": test["date"].values,
+                                       "sku": test["sku"].values,
                                        "y": test["units"].values, "p": p}))
             rows.append({"fold": k, "model": model.name, "wape": wape(test["units"], p),
                          "mae": mae(test["units"], p), "bias": bias(test["units"], p),

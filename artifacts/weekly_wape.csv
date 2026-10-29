@@ -1,0 +1,6 @@
+,daily,daily,daily,weekly,weekly,weekly
+,Gradient boosting,Seasonal average (4 wk),Seasonal naive,Gradient boosting,Seasonal average (4 wk),Seasonal naive
+segment,,,,,,
+ALL,0.8828,0.9829,1.1365,0.5613,0.5393,0.643
+lumpy,0.8859,1.0051,1.1517,0.5573,0.5526,0.6563
+erratic,0.8655,0.8604,1.0521,0.5834,0.4654,0.5692
