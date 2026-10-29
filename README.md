@@ -1,5 +1,7 @@
 # StockSense: Demand Forecasting and Inventory Evaluation on Lumpy Retail Demand
 
+**Live demo:** https://stocksense-predictor.streamlit.app/ (free tier: may take about 30 seconds to wake up)
+
 [![tests](https://github.com/SuhaniKhaneja/StockSense/actions/workflows/ci.yml/badge.svg)](https://github.com/SuhaniKhaneja/StockSense/actions/workflows/ci.yml)
 
 StockSense forecasts product-level demand, estimates prediction intervals, turns forecasts into reorder recommendations, and, most importantly, **evaluates whether the forecasts actually help**. It is built on real transaction data (UCI Online Retail II) and uses leakage-safe rolling-origin backtesting with bootstrap confidence intervals.
