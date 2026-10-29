@@ -1,0 +1,4 @@
+segment,volume_share,n_skus,TSB,Weekly GBM,Weekly avg (4 wk),Weekly naive
+ALL,1.0,136.0,0.522,0.6395,0.5393,0.643
+lumpy,0.8468,121.0,0.541,0.6384,0.5526,0.6563
+erratic,0.1532,15.0,0.4172,0.6455,0.4654,0.5692
