@@ -7,9 +7,12 @@ from stocksense.inventory import recommend, simulate_stock
 
 ROOT = Path(__file__).parent
 ART = ROOT / "artifacts"
+SALES = ROOT / "data" / "sales.csv"
+if not SALES.exists():  # deployed copy: data/ is not in git
+    SALES = ART / "sales_recent.csv"
 INK, TEAL, AMBER, MIST = "#14302f", "#1f7a6d", "#d98e04", "#e8efec"
 
-st.set_page_config(page_title="StockSense", page_icon="📦", layout="wide")
+st.set_page_config(page_title="StockSense", page_icon="ðŸ“¦", layout="wide")
 st.markdown(f"""<style>
 html, body, [class*="css"] {{ font-family: 'Source Sans 3', 'Segoe UI', sans-serif; }}
 h1, h2, h3 {{ color: {INK}; letter-spacing: -0.01em; }}
@@ -22,7 +25,7 @@ def load():
     if not (ART / "forecast.csv").exists():
         return None
     return (pd.read_csv(ART / "forecast.csv", parse_dates=["date"]),
-            pd.read_csv(ROOT / "data" / "sales.csv", parse_dates=["date"]),
+            pd.read_csv(SALES, parse_dates=["date"]),
             pd.read_csv(ART / "backtest_summary.csv", index_col=0),
             json.load(open(ART / "meta.json")))
 
