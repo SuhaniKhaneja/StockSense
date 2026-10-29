@@ -11,12 +11,14 @@ SALES = ROOT / "data" / "sales.csv"
 if not SALES.exists():  # deployed copy: data/ is not in git
     SALES = ART / "sales_recent.csv"
 INK, TEAL, AMBER, MIST = "#14302f", "#1f7a6d", "#d98e04", "#e8efec"
+HIST = "#7f9a96"  # readable on both light and dark themes
 
-st.set_page_config(page_title="StockSense", page_icon="ðŸ“¦", layout="wide")
+st.set_page_config(page_title="StockSense", page_icon="\U0001F4E6", layout="wide")
 st.markdown(f"""<style>
 html, body, [class*="css"] {{ font-family: 'Source Sans 3', 'Segoe UI', sans-serif; }}
-h1, h2, h3 {{ color: {INK}; letter-spacing: -0.01em; }}
+h1, h2, h3 {{ letter-spacing: -0.01em; }}
 [data-testid="stMetric"] {{ background: {MIST}; padding: 14px 18px; border-radius: 6px; }}
+[data-testid="stMetric"] * {{ color: {INK} !important; }}
 </style>""", unsafe_allow_html=True)
 
 
@@ -43,7 +45,8 @@ with st.sidebar:
     lead = st.slider("Supplier lead time (days)", 1, 14, 7)
     review = st.slider("Days of stock to order for", 1, 14, 7)
     service = st.select_slider("Service level", [0.90, 0.95, 0.97, 0.99], value=0.95)
-    st.info(f"Data: {meta['data_source']}. Stock levels are simulated for this demo.")
+    st.info("Data: UCI Online Retail II, daily sales for 136 products. "
+            "Stock levels are simulated for this demo.")
 
 stock = simulate_stock(sorted(fc["sku"].unique()), fc)
 rec = recommend(fc, stock, lead, review, service)
@@ -62,7 +65,7 @@ with tab2:
     h = hist[hist["sku"] == sku].tail(60)
     f = fc[fc["sku"] == sku]
     fig = go.Figure()
-    fig.add_scatter(x=h["date"], y=h["units"], name="Actual sales", line=dict(color=INK, width=2))
+    fig.add_scatter(x=h["date"], y=h["units"], name="Actual sales", line=dict(color=HIST, width=2))
     fig.add_scatter(x=f["date"], y=f["hi"], line=dict(width=0), showlegend=False, hoverinfo="skip")
     fig.add_scatter(x=f["date"], y=f["lo"], fill="tonexty", fillcolor="rgba(217,142,4,0.25)",
                     line=dict(width=0), name="80% range")
@@ -72,6 +75,7 @@ with tab2:
     st.plotly_chart(fig, width="stretch")
 
 with tab3:
+    st.subheader("Daily forecasting")
     st.write("Rolling-origin backtest: 4 folds of 14 days, trained only on data known at each forecast date. "
              "Lower WAPE is better.")
     s = summary.reset_index()
@@ -84,3 +88,23 @@ with tab3:
         b = json.load(open(boot))["Seasonal naive"]
         st.write(f"Versus seasonal naive: {b['relative_wape_reduction']:.1%} lower WAPE "
                  f"(95% CI {b['ci95'][0]:.1%} to {b['ci95'][1]:.1%}, resampling {b['n_skus']} products).")
+    st.caption("This is the daily grain, where error is dominated by when large orders land. "
+               "Daily WAPE is high (about 0.89). See the weekly results below.")
+
+    weekly = ART / "weekly_native.csv"
+    if weekly.exists():
+        st.subheader("Weekly planning grain")
+        st.write("Weekly WAPE by demand segment, on the same test weeks. Lower is better. "
+                 "A 4-week average and TSB (an intermittent-demand method) are statistically tied, "
+                 "and both clearly beat a gradient-boosting model trained on weekly totals.")
+        st.dataframe(pd.read_csv(weekly).round(3), hide_index=True, width="stretch")
+
+    inv = ART / "inventory_backtest.csv"
+    if inv.exists():
+        st.subheader("Inventory backtest")
+        st.write("Weekly order-up-to policy with safety stock from each method's own recent errors. "
+                 "Fill rate is the share of demand served; excess stock is leftover stock as a share of demand.")
+        st.dataframe(pd.read_csv(inv).round(3), hide_index=True, width="stretch")
+        st.caption("A naive forecast needs roughly 10 to 13 points of demand more excess stock than the "
+                   "4-week average for the same fill rate (approximate). TSB and the 4-week average sit on "
+                   "essentially the same trade-off. No method reaches its target service level.")
