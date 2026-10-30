@@ -17,6 +17,8 @@ On 136 products from UCI Online Retail II (739 days):
 3. **At weekly planning grain, simple methods win.** A 4-week average and TSB (an intermittent-demand method) are statistically tied (WAPE 0.539 and 0.522). Both clearly beat weekly naive (0.643). A gradient-boosting model trained on weekly totals is significantly worse than the 4-week average (0.639, 18.6% worse, 95% CI 10.5% to 27.7% worse).
 4. **Forecast quality matters for inventory, up to a point.** In a stock simulation, a naive forecast needs roughly 10 to 13 percentage points of demand more excess stock than the 4-week average to reach the same fill rate. TSB and the 4-week average sit on essentially the same cost/service trade-off.
 
+5. **Prediction intervals were too wide, and calibration fixed most of it.** The nominal 80% interval covered 92.2% of outcomes. A width-scaled conformal correction to the upper bound, calibrated only on older folds, brings pooled out-of-sample coverage to 82.4% with intervals 31% narrower. Coverage still varies by fold (76% to 90%).
+
 The honest conclusion: on this dataset a complex model does not earn its place at the weekly planning grain. The evaluation framework is what showed that.
 
 ## Dataset
@@ -103,6 +105,19 @@ How to read it:
 - Naive needs roughly 10 to 13 percentage points of demand more excess stock than the 4-week average for the same fill rate (approximate, by interpolation).
 - No method reaches its target service level. The "95%" policies deliver 92.6% to 93.6% fill, because 26 weeks of errors per product is too little to estimate a high quantile on lumpy demand.
 
+### 5. Interval calibration
+
+The gradient-boosting model's nominal 80% interval covered 92.2% of daily outcomes (pooled over the three test folds below). `stocksense/calibrate.py` leaves the lower bound unchanged (it sits at zero on most days) and shifts the upper bound by `q x width`, where `width` is the interval width and `q` comes from split conformal prediction. A first version with a fixed shift in units barely moved coverage (92.2% to 91.2%), because a few high-volume products dominate the average width; scaling the shift by each interval's width fixed that. Each fold is calibrated only on folds older than it.
+
+| Fold                     | Coverage before | Coverage after | Width before | Width after |
+|--------------------------|----------------:|---------------:|-------------:|------------:|
+| 0 (newest, holiday peak) | 95.6%           | 90.3%          | 115.8        | 86.6        |
+| 1                        | 90.2%           | 80.3%          | 90.7         | 62.0        |
+| 2                        | 90.8%           | 76.4%          | 86.5         | 54.7        |
+| Pooled                   | 92.2%           | 82.4%          | 97.7         | 67.8        |
+
+Coverage still varies by fold, so this is an improvement, not exact calibration. The dashboard applies the offset calibrated on all folds (-0.388 x interval width).
+
 ## How it works
 
 - `stocksense/features.py`: leakage-safe features (same-weekday lags of 14, 21, 28, 35 days, rolling means, calendar, price ratio). Every history-based feature is at least 14 days old.
@@ -113,6 +128,7 @@ How to read it:
 - `stocksense/weekly_model.py`: weekly-native models (naive, 4-week average, TSB, gradient boosting) with bootstrap CIs.
 - `stocksense/inventory_backtest.py`: the stock simulation above.
 - `stocksense/inventory.py`: reorder points, safety stock and order quantities for the dashboard. It sizes safety stock from the model's prediction interval with a normal approximation, which the inventory backtest suggests is not well suited to lumpy demand. `stocksense/safety.py` computes empirical safety stock from each product's own recent weekly forecast errors; the dashboard uses it by default and keeps the interval method as an option.
+- `stocksense/calibrate.py`: width-scaled conformal calibration of the 80% interval upper bound, evaluated out of sample.
 - `app.py` (Streamlit dashboard) and `api.py` (FastAPI). Stock levels shown in the dashboard are simulated.
 
 ## Run locally
@@ -145,6 +161,8 @@ python -m stocksense.segments ".\data\sales.csv"
 python -m stocksense.weekly ".\data\sales.csv"
 python -m stocksense.weekly_model ".\data\sales.csv"
 python -m stocksense.inventory_backtest ".\data\sales.csv"
+python -m stocksense.safety ".\data\sales.csv"
+python -m stocksense.calibrate ".\data\sales.csv"
 ```
 
 Outputs are written to `artifacts/`. Run the dashboard with `streamlit run app.py` and the API with `uvicorn api:app --reload`.
@@ -189,7 +207,7 @@ StockSense/
 - One dataset, one retailer, 136 products. Findings may not transfer to smoother demand.
 - Missing product-days are treated as zero demand, and no promotion or holiday data is used.
 - WAPE is dominated by large orders. It is a reasonable metric here but not the only one.
-- Prediction intervals are over-wide (92.4% observed coverage for a nominal 80%) and have not been calibrated.
+- Prediction intervals are only partly calibrated: pooled out-of-sample coverage is 82.4% for a nominal 80%, but per-fold coverage ranges from 76% to 90%, so calibration does not transfer perfectly across periods.
 - Inventory simulation assumes a one-week lead time, lost sales and no ordering costs. The TSB parameters are fixed, not tuned.
 - Safety stock from 26 weeks of errors undershoots high service targets.
 - The dashboard's empirical safety stock extends the backtested one-week policy to 1 to 4 weeks of cover; the multi-week version has not been backtested separately.
@@ -198,7 +216,7 @@ StockSense/
 ## Future work
 
 - Compute the equal-fill-rate stock comparison properly, with bootstrap CIs.
-- Calibrate prediction intervals (for example with conformal prediction).
+- Calibrate intervals per demand segment, and test conformal methods that adapt to changing coverage over time.
 - Backtest the multi-week empirical policy that the dashboard uses.
 - Test on a second dataset with smoother demand to see where gradient boosting starts to pay off.
 

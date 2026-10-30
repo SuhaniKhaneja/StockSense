@@ -5,6 +5,7 @@ import plotly.graph_objects as go
 import streamlit as st
 from stocksense.inventory import recommend, simulate_stock
 from stocksense.safety import recommend_empirical
+from stocksense.calibrate import apply_offset
 
 ROOT = Path(__file__).parent
 ART = ROOT / "artifacts"
@@ -41,6 +42,11 @@ if data is None:
     st.error("No forecasts found. Run `python -m stocksense.pipeline` first, then reload this page.")
     st.stop()
 fc, hist, summary, meta = data
+CAL = ART / "interval_calibration.json"
+if CAL.exists():  # calibrated upper bound, see stocksense/calibrate.py
+    _q = json.load(open(CAL))["upper_offset_rel_width"]
+    _lo, _hi = apply_offset(fc["pred"], fc["lo"], fc["hi"], _q)
+    fc = fc.assign(lo=_lo, hi=_hi)
 
 with st.sidebar:
     st.header("Ordering policy")
@@ -80,7 +86,7 @@ with tab2:
     fig.add_scatter(x=h["date"], y=h["units"], name="Actual sales", line=dict(color=HIST, width=2))
     fig.add_scatter(x=f["date"], y=f["hi"], line=dict(width=0), showlegend=False, hoverinfo="skip")
     fig.add_scatter(x=f["date"], y=f["lo"], fill="tonexty", fillcolor="rgba(217,142,4,0.25)",
-                    line=dict(width=0), name="80% range")
+                    line=dict(width=0), name="80% range (calibrated)" if CAL.exists() else "80% range")
     fig.add_scatter(x=f["date"], y=f["pred"], name="Forecast", line=dict(color=AMBER, width=3))
     fig.update_layout(height=420, margin=dict(l=0, r=0, t=10, b=0), yaxis_title="Units per day",
                       legend=dict(orientation="h", y=1.1))
@@ -120,3 +126,13 @@ with tab3:
         st.caption("A naive forecast needs roughly 10 to 13 points of demand more excess stock than the "
                    "4-week average for the same fill rate (approximate). TSB and the 4-week average sit on "
                    "essentially the same trade-off. No method reaches its target service level.")
+
+    cal = ART / "interval_calibration.csv"
+    if cal.exists():
+        st.subheader("Interval calibration")
+        st.write("The nominal 80% interval covered about 92% of outcomes. The upper bound is shifted by a "
+                 "fraction of each interval's width, calibrated only on older folds, which brings pooled "
+                 "out-of-sample coverage close to 80% with narrower intervals.")
+        st.dataframe(pd.read_csv(cal).round(3), hide_index=True, width="stretch")
+        st.caption("Coverage still varies by fold, so this is an improvement and not exact calibration. "
+                   "The forecast chart and the interval-based option use the calibrated upper bound.")
