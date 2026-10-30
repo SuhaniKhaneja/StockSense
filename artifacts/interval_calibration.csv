@@ -1,0 +1,5 @@
+fold,calibrated_on_folds,offset_rel_width,coverage_before,coverage_after,width_before,width_after
+0,1-3,-0.3459,0.9559,0.9034,115.8396,86.6039
+1,2-3,-0.3748,0.9018,0.803,90.6885,62.0368
+2,3-3,-0.4428,0.9081,0.7642,86.4973,54.6661
+ALL,older folds only,-0.3878,0.9219,0.8235,97.6751,67.7689

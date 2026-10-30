@@ -22,10 +22,12 @@ def backtest(df, n_folds=4, horizon=HORIZON):
                 cov = coverage(test["units"], lo, hi)
             else:
                 p, cov = model.predict(test), None
+                lo = hi = float("nan")
             preds.append(pd.DataFrame({"model": model.name, "fold": k,
                                        "date": test["date"].values,
                                        "sku": test["sku"].values,
-                                       "y": test["units"].values, "p": p}))
+                                       "y": test["units"].values, "p": p,
+                                       "lo": lo, "hi": hi}))
             rows.append({"fold": k, "model": model.name, "wape": wape(test["units"], p),
                          "mae": mae(test["units"], p), "bias": bias(test["units"], p),
                          "coverage_80": cov})
