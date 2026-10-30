@@ -4,9 +4,11 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 from stocksense.inventory import recommend, simulate_stock
+from stocksense.safety import recommend_empirical
 
 ROOT = Path(__file__).parent
 ART = ROOT / "artifacts"
+SAFETY = ART / "safety_empirical.csv"
 SALES = ROOT / "data" / "sales.csv"
 if not SALES.exists():  # deployed copy: data/ is not in git
     SALES = ART / "sales_recent.csv"
@@ -45,11 +47,21 @@ with st.sidebar:
     lead = st.slider("Supplier lead time (days)", 1, 14, 7)
     review = st.slider("Days of stock to order for", 1, 14, 7)
     service = st.select_slider("Service level", [0.90, 0.95, 0.97, 0.99], value=0.95)
+    INTERVAL = "Model interval (normal approximation)"
+    EMPIRICAL = "Empirical (recent forecast errors)"
+    method = st.radio("Safety stock method", [EMPIRICAL, INTERVAL] if SAFETY.exists() else [INTERVAL])
+    if method == EMPIRICAL:
+        st.caption("Safety stock is a quantile of each product's own recent weekly forecast errors. "
+                   "The backtest found this better suited to lumpy demand than a normal approximation. "
+                   "Cover is rounded up to whole weeks (max 4); the backtest tested the one-week policy.")
     st.info("Data: UCI Online Retail II, daily sales for 136 products. "
             "Stock levels are simulated for this demo.")
 
 stock = simulate_stock(sorted(fc["sku"].unique()), fc)
-rec = recommend(fc, stock, lead, review, service)
+if method == EMPIRICAL:
+    rec = recommend_empirical(pd.read_csv(SAFETY), stock, lead, review, service)
+else:
+    rec = recommend(fc, stock, lead, review, service)
 tab1, tab2, tab3 = st.tabs(["Reorder list", "Forecast", "Model accuracy"])
 
 with tab1:

@@ -112,7 +112,7 @@ How to read it:
 - `stocksense/weekly.py`: daily vs weekly error from the same backtest.
 - `stocksense/weekly_model.py`: weekly-native models (naive, 4-week average, TSB, gradient boosting) with bootstrap CIs.
 - `stocksense/inventory_backtest.py`: the stock simulation above.
-- `stocksense/inventory.py`: reorder points, safety stock and order quantities for the dashboard. It sizes safety stock from the model's prediction interval with a normal approximation, which the inventory backtest suggests is not well suited to lumpy demand.
+- `stocksense/inventory.py`: reorder points, safety stock and order quantities for the dashboard. It sizes safety stock from the model's prediction interval with a normal approximation, which the inventory backtest suggests is not well suited to lumpy demand. `stocksense/safety.py` computes empirical safety stock from each product's own recent weekly forecast errors; the dashboard uses it by default and keeps the interval method as an option.
 - `app.py` (Streamlit dashboard) and `api.py` (FastAPI). Stock levels shown in the dashboard are simulated.
 
 ## Run locally
@@ -192,14 +192,14 @@ StockSense/
 - Prediction intervals are over-wide (92.4% observed coverage for a nominal 80%) and have not been calibrated.
 - Inventory simulation assumes a one-week lead time, lost sales and no ordering costs. The TSB parameters are fixed, not tuned.
 - Safety stock from 26 weeks of errors undershoots high service targets.
-- The dashboard's reorder logic (`inventory.py`) is not yet switched to the empirical safety-stock method used in the backtest.
+- The dashboard's empirical safety stock extends the backtested one-week policy to 1 to 4 weeks of cover; the multi-week version has not been backtested separately.
 - The equal-fill-rate comparison between methods is read off by interpolation, without confidence intervals.
 
 ## Future work
 
 - Compute the equal-fill-rate stock comparison properly, with bootstrap CIs.
 - Calibrate prediction intervals (for example with conformal prediction).
-- Use empirical-error safety stock in the dashboard recommendations.
+- Backtest the multi-week empirical policy that the dashboard uses.
 - Test on a second dataset with smoother demand to see where gradient boosting starts to pay off.
 
 ## Credits
